@@ -37,14 +37,18 @@ smElementMapVersion = "sm1."
 smJunctionDefaultVars = [("gap", "defaultJunctionGap")]
 
 
-def smJunction(gap=2.0, selEdgeNames="", MainObject=None, toponamingId=None):
+def smJunction(gap=2.0, selEdgeNames="", MainObject=None, toponamingId=None,
+               toponamingSlots=None):
     # `toponamingId` is (feature ID, 0); None disables tagging of the tool
-    # shapes (see SheetMetalTools.smTagShape).
+    # shapes (see SheetMetalTools.smTagShape). `toponamingSlots` gives the tag
+    # index per selected edge (see SheetMetalTools.smSelectionSlots).
     import BOPTools.JoinFeatures
     import BOPTools.SplitFeatures
 
     resultSolid = MainObject
     for k, selEdgeName in enumerate(selEdgeNames):
+        if toponamingSlots is not None and k < len(toponamingSlots):
+            k = toponamingSlots[k]
         edge = MainObject.getElement(SheetMetalTools.getElementFromTNP(selEdgeName))
         facelist = MainObject.ancestorsOfType(edge, Part.Face)
         # for face in facelist:
@@ -102,8 +106,10 @@ class SMJunction:
         """
         # Pass selected object shape.
         Main_Object = fp.baseObject[0].Shape.copy()
+        slots = SheetMetalTools.smSelectionSlots(fp, fp.baseObject[0].Shape, fp.baseObject[1])
         fp.Shape = smJunction(gap=fp.gap.Value, selEdgeNames=fp.baseObject[1],
-                              MainObject=Main_Object, toponamingId=(fp.ID, 0))
+                              MainObject=Main_Object, toponamingId=(fp.ID, 0),
+                              toponamingSlots=slots)
         SheetMetalTools.smHideObjects(fp.baseObject[0])
 
 

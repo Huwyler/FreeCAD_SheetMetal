@@ -90,6 +90,63 @@ def smTagShape(shape, toponamingId, index, role):
     return shape
 
 
+_smSlotsProp = "ToponamingSlots"
+_smSlotsNext = "#next"
+
+
+def _smElementKey(shape, name):
+    """Identity of a selected element: its mapped name in `shape` if it has
+    one, otherwise its indexed name ("Edge5")."""
+    name = getElementFromTNP(name)
+    mapped = ""
+    if hasattr(shape, "getElementMappedName"):
+        try:
+            mapped = shape.getElementMappedName(name)
+        except Exception:
+            mapped = ""
+        if isinstance(mapped, (tuple, list)):
+            mapped = mapped[0] if mapped else ""
+    return mapped or name
+
+
+def smSelectionSlots(fp, shape, names):
+    """Stable tag index (0..63) for each selected element in `names`.
+
+    The tag index of a selection must stay with its element when the
+    selection list changes (an element is removed, inserted or the list is
+    reordered); the position in the list does not. The slots are stored in a
+    hidden map property on `fp`: element identity -> slot. Slots of removed
+    elements are dropped and never handed out again, so a reference to a
+    removed element can not silently move to a newly added one. If the slots
+    run out, all current elements are renumbered once in list order.
+    Returns None when `fp` has no ID (toponaming tagging is off then).
+    """
+    if not getattr(fp, "ID", 0):
+        return None
+    if not hasattr(fp, _smSlotsProp):
+        # Hidden (4) | Output (8, changes don't touch fp) | NoRecompute (16)
+        fp.addProperty("App::PropertyMap", _smSlotsProp, "Base",
+                       "Toponaming: tag index per selected element", 4 | 8 | 16)
+    stored = dict(getattr(fp, _smSlotsProp))
+    nextSlot = int(stored.pop(_smSlotsNext, "0"))
+    keys = [_smElementKey(shape, n) for n in names]
+    slots = {k: int(stored[k]) for k in keys if k in stored}
+    for k in keys:
+        if k not in slots:
+            slots[k] = nextSlot
+            nextSlot += 1
+    if nextSlot > 64:
+        slots = {}
+        for k in keys:
+            slots.setdefault(k, len(slots))
+        nextSlot = len(slots)
+    new = {k: str(v) for k, v in slots.items()}
+    new[_smSlotsNext] = str(nextSlot)
+    if new != dict(getattr(fp, _smSlotsProp)):
+        setattr(fp, _smSlotsProp, new)
+    return [slots[k] for k in keys]
+
+
 def taskSaveDefaults(obj, varList):
     for var in varList:
         if isinstance(var, tuple):

@@ -1274,11 +1274,17 @@ def smBend(
     PerforationMaxLength=5.0,
     NonperforationMaxLength=5.0,
     toponamingId=None,
+    toponamingSlots=None,
 ):
     # Toponaming: give every intermediate tool shape a deterministic tag
     # (see SheetMetalTools.smTagShape).
     # `toponamingId` is (feature ID, sketch segment index); None disables it.
+    # `toponamingSlots` gives the tag index for each entry of selFaceNames
+    # (see SheetMetalTools.smSelectionSlots); without it the list position
+    # is used.
     def smTag(shape, i, role):
+        if toponamingSlots is not None and i < len(toponamingSlots):
+            i = toponamingSlots[i]
         return SheetMetalTools.smTagShape(shape, toponamingId, i, role)
 
     # if sketch is as wall.
@@ -1903,6 +1909,8 @@ class SMBendWall:
         # Pass selected object shape.
         Main_Object = fp.baseObject[0].Shape.copy()
         face = fp.baseObject[1]
+        # Tag index per selected edge/face, kept when the selection changes.
+        slots = SheetMetalTools.smSelectionSlots(fp, fp.baseObject[0].Shape, face)
         thk, thkDir = sheet_thk(Main_Object, face[0])
 
         if fp.Sketch:
@@ -2067,7 +2075,8 @@ class SMBendWall:
                 PerforationInitialLength=fp.PerforationInitialLength.Value,
                 PerforationMaxLength=fp.PerforationMaxLength.Value,
                 NonperforationMaxLength=fp.NonperforationMaxLength.Value,
-                toponamingId=(fp.ID, i))
+                toponamingId=(fp.ID, i),
+                toponamingSlots=slots if i == 0 else None)
             faces = smGetFace(f, s)
             face = faces
             Main_Object = s

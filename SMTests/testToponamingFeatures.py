@@ -243,3 +243,89 @@ class TestToponamingFeatures(unittest.TestCase):
         obj = self.doc.addObject("Part::FeaturePython", "Junction")
         SMJunction(obj, box, [_edgeAt(box, x=0, y=0)])
         self._check(obj, lambda: setattr(obj, "gap", 3))
+
+    # ---- selection changes: a wall's names must stay with its edge ----
+
+    def _wallFace(self, obj, side):
+        """Largest planar face of the wall on `side` of the 100 x 60 plate."""
+        sel = {"front": lambda n, c: n.y < -0.99 and c.y < -30.5,
+               "right": lambda n, c: n.x > 0.99 and c.x > 50.5,
+               "back": lambda n, c: n.y > 0.99 and c.y > 30.5}[side]
+        best = None
+        for i, f in enumerate(obj.Shape.Faces):
+            if f.Surface.TypeId != "Part::GeomPlane":
+                continue
+            n = f.normalAt(*f.Surface.parameter(f.CenterOfMass))
+            if sel(n, f.CenterOfMass) and (best is None or f.Area > obj.Shape.Faces[best].Area):
+                best = i
+        self.assertIsNotNone(best, "no %s wall" % side)
+        return best
+
+    def _assertOnFace(self, sketch, obj, index):
+        self.assertTrue(sketch.isValid(), sketch.getStatusString())
+        f = obj.Shape.Faces[index]
+        n = f.normalAt(*f.Surface.parameter(f.CenterOfMass))
+        self.assertLess((sketch.Placement.Rotation.multVec(V(0, 0, 1)) - n).Length, 1e-6,
+                        "sketch is not on the expected face")
+        self.assertLess(abs((sketch.Placement.Base - f.CenterOfMass).dot(n)), 1e-6,
+                        "sketch is not on the expected face")
+
+    def _attach(self, obj, index):
+        sk = self.body.newObject("Sketcher::SketchObject", "OnWall")
+        sk.AttachmentSupport = [(obj, "Face%d" % (index + 1))]
+        sk.MapMode = "FlatFace"
+        self.doc.recompute()
+        return sk
+
+    def test_bend_selection_changes(self):
+        cases = [  # (edges before, edges after, wall with the attached sketch)
+            (["front", "right", "back"], ["right", "back"], "back"),
+            (["front", "right", "back"], ["front", "back"], "back"),
+            (["right", "back"], ["front", "right", "back"], "back"),
+            (["front", "back"], ["back", "front"], "front"),
+        ]
+        for before, after, side in cases:
+            with self.subTest(before=before, after=after):
+                if hasattr(self, "body"):
+                    FreeCAD.closeDocument(self.doc.Name)
+                    self.doc = FreeCAD.newDocument("ToponamingFeatures")
+                base = self._plate()
+                edge = {"front": _edgeAt(base, y=-30, z=T), "right": _edgeAt(base, x=50, z=T),
+                        "back": _edgeAt(base, y=30, z=T)}
+                bend = self._bend(base, [edge[s] for s in before])
+                for o in (base, bend):
+                    o.touch()
+                self.doc.recompute()
+                sk = self._attach(bend, self._wallFace(bend, side))
+                bend.baseObject = (base, [edge[s] for s in after])
+                self.doc.recompute()
+                self._assertOnFace(sk, bend, self._wallFace(bend, side))
+
+    def test_base_shape_type_change(self):
+        """L-Shape -> U-Shape adds a -Y wall; the +Y wall must keep its names."""
+        from SheetMetalBaseShapeCmd import SMBaseShape
+
+        self.body = self.doc.addObject("PartDesign::Body", "Body")
+        obj = self.body.newObject("PartDesign::FeaturePython", "BaseShape")
+        SMBaseShape(obj)
+        obj.shapeType = "L-Shape"
+        self.doc.recompute()
+        obj.touch()
+        self.doc.recompute()
+
+        def plusYWall():
+            best = None
+            for i, f in enumerate(obj.Shape.Faces):
+                if f.Surface.TypeId != "Part::GeomPlane":
+                    continue
+                n = f.normalAt(*f.Surface.parameter(f.CenterOfMass))
+                if n.y > 0.99 and (best is None or f.CenterOfMass.y > obj.Shape.Faces[best].CenterOfMass.y
+                                   or (abs(f.CenterOfMass.y - obj.Shape.Faces[best].CenterOfMass.y) < 1e-6
+                                       and f.Area > obj.Shape.Faces[best].Area)):
+                    best = i
+            return best
+
+        sk = self._attach(obj, plusYWall())
+        obj.shapeType = "U-Shape"
+        self.doc.recompute()
+        self._assertOnFace(sk, obj, plusYWall())

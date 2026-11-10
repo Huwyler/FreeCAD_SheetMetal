@@ -360,6 +360,8 @@ class SMHem:
         # Pass selected object shape.
         Main_Object = fp.baseObject[0].Shape.copy()
         face = fp.baseObject[1]
+        # Tag index per selected edge, kept when the selection changes.
+        slots = SheetMetalTools.smSelectionSlots(fp, fp.baseObject[0].Shape, face)
         thk, thkDir = sheet_thk(Main_Object, face[0])
 
         # Gap value needed for first bend set only.
@@ -415,7 +417,8 @@ class SMHem:
                 MainObject=Main_Object,
                 mingap=fp.minGap.Value,
                 maxExtendGap=fp.maxExtendDist.Value,
-                toponamingId=(fp.ID, i))
+                toponamingId=(fp.ID, i),
+                toponamingSlots=slots if i == 0 else None)
 
             faces = smGetFace(f, s)
             face = faces

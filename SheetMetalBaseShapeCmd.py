@@ -99,7 +99,15 @@ def smCreateBaseShape(type, thickness, radius, width, length,
     # box.translate(FreeCAD.Vector(offsx, offsy, 0))
     if numfolds == 0:
         return box
+    # Toponaming: the tag index of each wall is its side (+Y, -Y, +X, -X),
+    # so a wall keeps its names when the shape type adds or removes others.
+    def wallSlot(x, y, sx=1.0, sy=1.0):
+        if abs(y) / sy >= abs(x) / sx:
+            return 0 if y > 0 else 1
+        return 2 if x > 0 else 3
+
     faces = []
+    slots = []
     for i, face in enumerate(box.Faces):
         v = face.normalAt(0, 0)
         if ((v.y > 0.5)
@@ -108,23 +116,28 @@ def smCreateBaseShape(type, thickness, radius, width, length,
                 or (v.x < -0.5 and numfolds > 3)
         ):
             faces.append("Face" + str(i+1))
+            slots.append(wallSlot(v.x, v.y))
 
     shape, _f = smBend(thickness, selFaceNames=faces, extLen=height, bendR=radius,
                        MainObject=box, automiter=fillGaps, maxExtendGap=999999,
-                       toponamingId=topoId(0))
+                       toponamingId=topoId(0), toponamingSlots=slots)
     if type in ["Hat", "Box"]:
         faces = []
+        slots = []
         invertBend = False
         if type == "Hat":
             invertBend = True
+        center = box.BoundBox.Center
         for i, face in enumerate(shape.Faces):
             v = face.normalAt(0, 0)
             z = face.CenterOfGravity.z
             if v.z > 0.9999 and z > bendCompensation:
                 faces.append("Face" + str(i+1))
+                c = face.CenterOfGravity - center
+                slots.append(wallSlot(c.x, c.y, box.BoundBox.XLength, box.BoundBox.YLength))
         shape, _f = smBend(thickness, selFaceNames=faces, extLen=flangeWidth, bendR=radius,
                            MainObject=shape, flipped=invertBend, automiter=fillGaps, maxExtendGap=999999,
-                           toponamingId=topoId(1))
+                           toponamingId=topoId(1), toponamingSlots=slots)
     #SMLogger.message(str(faces))
     return shape
 
