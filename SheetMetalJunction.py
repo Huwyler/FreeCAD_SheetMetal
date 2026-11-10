@@ -37,12 +37,14 @@ smElementMapVersion = "sm1."
 smJunctionDefaultVars = [("gap", "defaultJunctionGap")]
 
 
-def smJunction(gap=2.0, selEdgeNames="", MainObject=None):
+def smJunction(gap=2.0, selEdgeNames="", MainObject=None, toponamingId=None):
+    # `toponamingId` is (feature ID, 0); None disables tagging of the tool
+    # shapes (see SheetMetalTools.smTagShape).
     import BOPTools.JoinFeatures
     import BOPTools.SplitFeatures
 
     resultSolid = MainObject
-    for selEdgeName in selEdgeNames:
+    for k, selEdgeName in enumerate(selEdgeNames):
         edge = MainObject.getElement(SheetMetalTools.getElementFromTNP(selEdgeName))
         facelist = MainObject.ancestorsOfType(edge, Part.Face)
         # for face in facelist:
@@ -50,16 +52,22 @@ def smJunction(gap=2.0, selEdgeNames="", MainObject=None):
         joinface = facelist[0].fuse(facelist[1])
         # Part.show(joinface, "joinface")
         filletedface = joinface.makeFillet(gap, joinface.Edges)
+        SheetMetalTools.smTagShape(filletedface, toponamingId, k, 4)
         # Part.show(filletedface, "filletedface")
         cutface1 = facelist[0].cut(filletedface)
+        SheetMetalTools.smTagShape(cutface1, toponamingId, k, 5)
         # Part.show(cutface1, "cutface1")
         offsetsolid1 = cutface1.makeOffsetShape(-gap, 0.0, fill=True)
+        SheetMetalTools.smTagShape(offsetsolid1, toponamingId, k, 1)
         # Part.show(offsetsolid1, "offsetsolid1")
         cutface2 = facelist[1].cut(filletedface)
+        SheetMetalTools.smTagShape(cutface2, toponamingId, k, 6)
         # Part.show(cutface2, "cutface2")
         offsetsolid2 = cutface2.makeOffsetShape(-gap, 0.0, fill=True)
+        SheetMetalTools.smTagShape(offsetsolid2, toponamingId, k, 2)
         # Part.show(offsetsolid2, "offsetsolid2")
-        cutsolid = offsetsolid1.fuse(offsetsolid2)
+        cutsolid = SheetMetalTools.smTagShape(offsetsolid1.fuse(offsetsolid2),
+                                              toponamingId, k, 3)
         # Part.show(cutsolid, "cutsolid")
         resultSolid = resultSolid.cut(cutsolid)
         # Part.show(resultsolid, "resultsolid")
@@ -95,7 +103,7 @@ class SMJunction:
         # Pass selected object shape.
         Main_Object = fp.baseObject[0].Shape.copy()
         fp.Shape = smJunction(gap=fp.gap.Value, selEdgeNames=fp.baseObject[1],
-                              MainObject=Main_Object)
+                              MainObject=Main_Object, toponamingId=(fp.ID, 0))
         SheetMetalTools.smHideObjects(fp.baseObject[0])
 
 

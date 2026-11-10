@@ -399,8 +399,13 @@ def getBendSolidParameters(resultSolid, BendEdge, thk, kfactor):
     }
 
 def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0.0, kfactor=0.5,
-              sketch=None, flipped=False, selEdgeNames="", MainObject=None):
+              sketch=None, flipped=False, selEdgeNames="", MainObject=None, toponamingId=None):
     import BOPTools.SplitAPI
+
+    # Toponaming: tag the tool shapes; `toponamingId` is (feature ID, 0), None
+    # disables it (see SheetMetalTools.smTagShape).
+    def tag(shape, index, role):
+        return SheetMetalTools.smTagShape(shape, toponamingId, index, role)
 
     resultSolid = MainObject.Shape.copy()
     REdgelist = []
@@ -431,29 +436,30 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
             weldFaces = []
             for sketch in sketches[0]:
                 if sketch is not None:
-                    face = Part.Face(sketch)
+                    face = tag(Part.Face(sketch), len(weldFaces), 2)
                     weldFaces.insert(0,face)
                 else:
                     weldFaces.insert(0,None)
-            reliefFace = Part.Face(sketches[1])
+            reliefFace = tag(Part.Face(sketches[1]), 0, 1)
         else:
             weldFaces = []
             for sketch in sketches[0]:
                 if sketch is not None:
-                    face = Part.Face(sketch)
+                    face = tag(Part.Face(sketch), len(weldFaces), 2)
                     weldFaces.append(face)
                 else:
                     weldFaces.append(None)
             reliefFace = None
     elif reliefsketch != "Sketch":
         sketch = makeSketch(reliefsketch, size, ratio, centerPoint, normal, SplitLineVector)
-        reliefFace = Part.Face(sketch)
+        reliefFace = tag(Part.Face(sketch), 0, 1)
     else:
         if sketch is None:
             FreeCAD.Console.PrintError("Sketch object is missing, please select one\n")
             return resultSolid
         reliefFace = Part.Face(sketch.Shape.Wires[0]).translate(FreeCAD.Vector(xoffset, yoffset,
                                                                                0))
+        tag(reliefFace, 0, 1)
     # Part.show(reliefFace, "reliefFace")
 
     solidlist = []
@@ -490,7 +496,7 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
                 params["revAxisV"],
                 params["flipped"]
             )
-            weldlist.append(bendsolid)
+            weldlist.append(tag(bendsolid, index, 3))
         if weldlist:
             resultSolid = resultSolid.multiFuse(weldlist[0:])
             resultSolid = resultSolid.removeSplitter()
@@ -518,9 +524,10 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
     # Part.show(SplitFaces, "SplitFaces")
 
     if First_face.Faces:
-        Flatsolid = First_face.extrude(normal * -thk)
+        Flatsolid = tag(First_face.extrude(normal * -thk), 0, 4)
         # Part.show(Flatsolid, "Flatsolid")
         solidlist.append(Flatsolid)
+    seq = 0
     if SplitFaces.Faces:
         for index,BalanceFace in enumerate(SplitFaces.Faces):
             if "Weld" in reliefsketch:
@@ -529,6 +536,7 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
             TopFace = LargeFace
             # Part.show(TopFace, "TopFace")
             while BalanceFace.Faces:
+                seq += 1
                 BendEdgelist = SheetMetalTools.smGetAllIntersectingEdges(BalanceFace, TopFace)
                 for BendEdge in BendEdgelist:
                     # Part.show(BendEdge, "BendEdge")
@@ -566,9 +574,11 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
                     bendR = cylface.Surface.Radius - thk
                     flipped = True
                     bendShape = cylface.makeOffsetShape(-thk, 0.0, fill=True)
+                    tag(bendShape, seq, 6)
                 else:
                     bendR = cylface.Surface.Radius
                     bendShape = cylface.makeOffsetShape(thk, 0.0, fill=True)
+                    tag(bendShape, seq, 6)
                     flipped = False
                 # To arrive `unfoldLength`, `neutralRadius`.
                 unfoldLength = (bendR + kfactor*thk) * abs(bendA) * math.pi / 180.0
@@ -610,6 +620,7 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
 
                 bendsolid = SheetMetalBendSolid.bend_solid(moved_face, moved_edge, bendR,
                                                            thk+epsilon, neutralRadius, revAxisV, flipped)
+                tag(bendsolid, seq, 5)
                 # Part.show(bendsolid, "bendsolid")
 
                 if "Weld" in reliefsketch and weldFace:
@@ -617,8 +628,9 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
 
                     weldsolid = SheetMetalBendSolid.bend_solid(weldFace, BendEdge, bendR,
                                                                thk, neutralRadius, revAxisV, flipped)
-                    weldsolid = weldsolid.fuse(bendShape)
-                    weldsolid = weldsolid.cut(bendsolid)
+                    weldsolid = tag(weldsolid, seq, 7).fuse(bendShape)
+                    weldsolid = tag(weldsolid, seq, 10).cut(bendsolid)
+                    tag(weldsolid, seq, 11)
                     # Part.show(bendsolid, "weldsolid")
                     weldlist.append(weldsolid)
                     break
@@ -650,7 +662,7 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
                 if Flatface.Faces:
                     BalanceFace = sketch_face.cut(Flatface)
                     # Part.show(BalanceFace, "BalanceFace")
-                    Flatsolid = Flatface.extrude(normal * -thk)
+                    Flatsolid = tag(Flatface.extrude(normal * -thk), seq, 8)
                     # Part.show(Flatsolid, "Flatsolid")
                     solidlist.append(Flatsolid)
                 else:
@@ -658,7 +670,7 @@ def smCornerR(reliefsketch="Circle", size=3.0, ratio=1.0, xoffset=0.0, yoffset=0
     if len(solidlist) > 1:
         SMSolid = solidlist[0].multiFuse(solidlist[1:])
         # Part.show(SMSolid, "SMSolid")
-        SMSolid = SMSolid.removeSplitter()
+        SMSolid = tag(SMSolid.removeSplitter(), 0, 9)
     else:
         SMSolid = solidlist[0]
     # Part.show(SMSolid, "SMSolid")
@@ -725,7 +737,8 @@ class SMCornerRelief:
                              yoffset=fp.YOffset.Value,
                              sketch=fp.Sketch,
                              selEdgeNames=fp.baseObject[1],
-                             MainObject=fp.baseObject[0])
+                             MainObject=fp.baseObject[0],
+                             toponamingId=(fp.ID, 0))
         SheetMetalTools.smHideObjects(fp.baseObject[0], fp.Sketch)
 
 def updateMissingParameter(obj):

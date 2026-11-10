@@ -414,7 +414,8 @@ class SMHem:
                 selFaceNames=face,
                 MainObject=Main_Object,
                 mingap=fp.minGap.Value,
-                maxExtendGap=fp.maxExtendDist.Value)
+                maxExtendGap=fp.maxExtendDist.Value,
+                toponamingId=(fp.ID, i))
 
             faces = smGetFace(f, s)
             face = faces

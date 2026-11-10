@@ -58,7 +58,12 @@ def GetOriginShift(dimension, type_, bendCompensation):
 
 
 def smCreateBaseShape(type, thickness, radius, width, length,
-                      height, flangeWidth, fillGaps, origin):
+                      height, flangeWidth, fillGaps, origin, featureId=None):
+    # Toponaming: tag the base box and pass (feature ID, step) to smBend, so
+    # element names are reproducible (see SheetMetalTools.smTagShape).
+    def topoId(step):
+        return (featureId, step) if featureId else None
+
     bendCompensation = thickness + radius
     height -= bendCompensation
     compx = 0
@@ -90,6 +95,7 @@ def smCreateBaseShape(type, thickness, radius, width, length,
     if type == "L-Shape" and originY == "+Y":
         offsy -= bendCompensation
     box = Part.makeBox(length, width, thickness, FreeCAD.Vector(offsx, offsy, 0))
+    SheetMetalTools.smTagShape(box, topoId(0), 0, 0)
     # box.translate(FreeCAD.Vector(offsx, offsy, 0))
     if numfolds == 0:
         return box
@@ -104,7 +110,8 @@ def smCreateBaseShape(type, thickness, radius, width, length,
             faces.append("Face" + str(i+1))
 
     shape, _f = smBend(thickness, selFaceNames=faces, extLen=height, bendR=radius,
-                       MainObject=box, automiter=fillGaps, maxExtendGap=999999)
+                       MainObject=box, automiter=fillGaps, maxExtendGap=999999,
+                       toponamingId=topoId(0))
     if type in ["Hat", "Box"]:
         faces = []
         invertBend = False
@@ -116,7 +123,8 @@ def smCreateBaseShape(type, thickness, radius, width, length,
             if v.z > 0.9999 and z > bendCompensation:
                 faces.append("Face" + str(i+1))
         shape, _f = smBend(thickness, selFaceNames=faces, extLen=flangeWidth, bendR=radius,
-                           MainObject=shape, flipped=invertBend, automiter=fillGaps, maxExtendGap=999999)
+                           MainObject=shape, flipped=invertBend, automiter=fillGaps, maxExtendGap=999999,
+                           toponamingId=topoId(1))
     #SMLogger.message(str(faces))
     return shape
 
@@ -194,7 +202,8 @@ class SMBaseShape:
                                      height=fp.height.Value,
                                      flangeWidth=fp.flangeWidth.Value,
                                      fillGaps=fp.fillGaps,
-                                     origin=fp.originLoc)
+                                     origin=fp.originLoc,
+                                     featureId=fp.ID)
 
     def getBaseShapeTypes(self):
         return base_shape_types

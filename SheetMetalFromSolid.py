@@ -469,14 +469,15 @@ class smfsFaceInfo:
 
 class smfsShapeInfo:
     """Build mapped shape information."""
-    def __init__(self, shape, selEdgeNames, selFaceNames):
+    def __init__(self, shape, selEdgeNames, selFaceNames, featureId=None):
         """Initialize the shape info with a values."""
+        self.featureId = featureId
         self.debugCount = 0
         self.shape = shape
         self.faceInfoDict = {}
         self.edgeInfoDict = {}
         self.edgeTypeDB = smGenerateEdgeTypeDatabase(shape, selEdgeNames, selFaceNames)
-        for face in shape.Faces:
+        for faceIndex, face in enumerate(shape.Faces):
             isRemoved = False
             for removedName in selFaceNames:
                 removed_face = shape.getElement(removedName)
@@ -484,15 +485,24 @@ class smfsShapeInfo:
                     isRemoved = True
                     break
             self.faceInfoDict[face.hashCode()] = smfsFaceInfo(face, shape, isRemoved)
-        for edge in shape.Edges:
+            self.faceInfoDict[face.hashCode()].index = faceIndex
+        for edgeIndex, edge in enumerate(shape.Edges):
             edgeCurveType = edge.Curve.TypeId
             if not (edgeCurveType == "Part::GeomLine" or edgeCurveType == "Part::GeomCircle"):
                 raise SMException("Unsupported shape type: only shapes with straight and circular edges are supported.")
             edgeType = self.edgeTypeDB[edge.hashCode()]
             edgeInfo = smfsEdgeInfo(edge, shape, edgeType)
+            edgeInfo.index = edgeIndex
             edgeInfo.faceInf1 = self.faceInfoDict[edgeInfo.face1.hashCode()] if edgeInfo.face1 else None
             edgeInfo.faceInf2 = self.faceInfoDict[edgeInfo.face2.hashCode()] if edgeInfo.face2 else None
             self.edgeInfoDict[edge.hashCode()] = edgeInfo
+
+    def tag(self, shape, seq, role):
+        """Toponaming: deterministic tag for an intermediate shape (see
+        SheetMetalTools.smTagShape). `seq` (face/edge/group index) may exceed
+        the 6-bit index field, so its upper bits go into the segment field."""
+        topoId = (self.featureId, seq >> 6) if self.featureId else None
+        return SheetMetalTools.smTagShape(shape, topoId, seq & 63, role)
 
     def analyzeEdges(self, radius, thickness, invertDir, tolerance):
         for edgeInfo in self.edgeInfoDict.values():
@@ -562,6 +572,7 @@ class smfsShapeInfo:
             pipe = smCreateCircularFaceLoft(wire, radius)
             if pipe is None:
                 continue
+            self.tag(pipe, i, 1)
             for faceInfo in faceGroup:
                 faceInfo.cutEdge(pipe)
 
@@ -577,6 +588,7 @@ class smfsShapeInfo:
         edgePipe = smCreateCircularFaceLoft(edgeInfo.extendedEdge, cutRadius)
         if edgePipe is None:
             return 0
+        self.tag(edgePipe, edgeInfo.index, 2 if faceInfo is edgeInfo.faceInf1 else 3)
         faceInfo.cutEdge(edgePipe)
         self.debugCount += 1
         return cutRadius
@@ -604,7 +616,7 @@ class smfsShapeInfo:
             arc = edgeInfo.filletArc
             arcBase = smGetCenterOfEdge(edgeInfo.edge)
             arc.translate(startPoint - arcBase)
-            bendFace = arc.extrude(endPoint - startPoint)
+            bendFace = self.tag(arc.extrude(endPoint - startPoint), edgeInfo.index, 4)
             #Part.show(edgeInfo.bendEdge, "bendEdge")
             #Part.show(bendFace, "bendFace")
             self.bendFaces.append(bendFace)
@@ -613,7 +625,7 @@ class smfsShapeInfo:
         shellFaces = []
         for faceInfo in self.faceInfoDict.values():
             if not faceInfo.isRemoved:
-                shellFaces.append(faceInfo.modifiedFace)
+                shellFaces.append(self.tag(faceInfo.modifiedFace, faceInfo.index, 5))
         shellFaces.extend(self.bendFaces)
         return Part.makeShell(shellFaces)
     
@@ -644,10 +656,11 @@ class smfsShapeInfo:
         return False
 
 # shape can be solid or shell, selItems is list of selected subelements names (e.g. ["Face1", "Edge3", ...])
-def smMakeSheetMetalFromSolid(shape, selItems, radius, thickness, tolerance, invert):
+def smMakeSheetMetalFromSolid(shape, selItems, radius, thickness, tolerance, invert,
+                              featureId=None):
     removeFaces = [sub for sub in selItems if sub.startswith("Face")]
     ripEdges = [sub for sub in selItems if sub.startswith("Edge")]
-    shapeInfo = smfsShapeInfo(shape, ripEdges, removeFaces)
+    shapeInfo = smfsShapeInfo(shape, ripEdges, removeFaces, featureId)
     shapeInfo.analyzeEdges(radius, thickness, invert, tolerance)
     shapeInfo.groupFaces()
     shapeInfo.adjustFacesShape()
@@ -709,7 +722,7 @@ class SMFromSolid:
             return
         self.addVerifyProperties(fp)
         fp.Shape = smMakeSheetMetalFromSolid(base_shape, fp.baseObject[1], fp.Radius.Value, 
-                                             fp.Thickness.Value, 0.1, fp.Invert)
+                                             fp.Thickness.Value, 0.1, fp.Invert, fp.ID)
 
     def __getstate__(self):
         return None

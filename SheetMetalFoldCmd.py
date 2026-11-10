@@ -40,7 +40,10 @@ BendOnLineDefaultVars = [("radius", "defaultRadius"), ("angle", "defaultFoldAngl
 
 
 def smFold(bendR=0.8, bendA=90.0, kfactor=1, invertbend=False, flipped=False, unfold=False,
-           position="forward", bendlinesketch=None, selFaceNames="", MainObject=None):
+           position="forward", bendlinesketch=None, selFaceNames="", MainObject=None,
+           toponamingId=None):
+    # `toponamingId` is (feature ID, 0); None disables tagging of the tool
+    # shapes (see SheetMetalTools.smTagShape).
     import BOPTools.JoinFeatures
     import BOPTools.SplitFeatures
 
@@ -207,9 +210,10 @@ def smFold(bendR=0.8, bendA=90.0, kfactor=1, invertbend=False, flipped=False, un
             solid1.rotate(revAxisP, revAxisV, bendA)
             # Part.show(solid1, "rotatedsolid1")
             #      bendSolidlist =[]
-            for flatface in flatfaces.Faces:
+            for k, flatface in enumerate(flatfaces.Faces):
                 bendsolid = SheetMetalBendSolid.bend_solid(flatface, bendEdge, bendR, thk,
                                                            neutralRadius, revAxisV, flipped)
+                SheetMetalTools.smTagShape(bendsolid, toponamingId, k, 1)
                 # Part.show(bendsolid, "bendsolid")
                 solidlist.append(bendsolid)
             solidlist.append(solid0)
@@ -275,7 +279,8 @@ class SMFoldWall:
                           position=fp.Position,
                           invertbend=fp.invertbend,
                           selFaceNames=fp.baseObject[1],
-                          MainObject=fp.baseObject[0])
+                          MainObject=fp.baseObject[0],
+                          toponamingId=(fp.ID, 0))
 
 
 ###################################################################################################

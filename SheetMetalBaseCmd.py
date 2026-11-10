@@ -58,7 +58,12 @@ def modifiedWire(WireList, radius, thk, length, normal, Side, sign):
 
 
 def smBase(thk=2.0, length=10.0, radius=1.0, Side="Inside",
-           midplane=False, reverse=False, MainObject=None):
+           midplane=False, reverse=False, MainObject=None, toponamingId=None):
+    # `toponamingId` is (feature ID, 0); None disables tagging of the
+    # intermediate shapes (see SheetMetalTools.smTagShape).
+    def tag(shape, index, role):
+        return SheetMetalTools.smTagShape(shape, toponamingId, index, role)
+
     # To Get sketch normal.
     WireList = MainObject.Shape.Wires[0]
     mat = MainObject.getGlobalPlacement().Rotation
@@ -66,7 +71,7 @@ def smBase(thk=2.0, length=10.0, radius=1.0, Side="Inside",
     # print([mat, normal])
     if WireList.isClosed():
         # If Closed sketch is there, make a face & extrude it.
-        sketch_face = Part.makeFace(MainObject.Shape.Wires, "Part::FaceMakerBullseye")
+        sketch_face = tag(Part.makeFace(MainObject.Shape.Wires, "Part::FaceMakerBullseye"), 0, 1)
         thk = -1.0 * thk if reverse else thk
         wallSolid = sketch_face.extrude(sketch_face.normalAt(0, 0) * thk)
         if midplane:
@@ -88,9 +93,9 @@ def smBase(thk=2.0, length=10.0, radius=1.0, Side="Inside",
         traj_extr = traj.extrude(normal * length)
         # Part.show(traj_extr, "traj_extr")
         solidlist = []
-        for face in traj_extr.Faces:
+        for k, face in enumerate(traj_extr.Faces):
             solid = face.makeOffsetShape(thk, 0.0, fill=True)
-            solidlist.append(solid)
+            solidlist.append(tag(solid, k, 2))
         if len(solidlist) > 1:
             wallSolid = solidlist[0].multiFuse(solidlist[1:])
         else:
@@ -149,7 +154,8 @@ class SMBaseBend:
                           Side=fp.BendSide,
                           midplane=fp.MidPlane,
                           reverse=fp.Reverse,
-                          MainObject=fp.BendSketch)
+                          MainObject=fp.BendSketch,
+                          toponamingId=(fp.ID, 0))
 
 
 ###################################################################################################

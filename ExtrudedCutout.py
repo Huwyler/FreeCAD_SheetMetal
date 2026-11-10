@@ -245,6 +245,10 @@ class ExtrudedCutout:
 
             # Step 3: Extrude the cut sketch.
             #
+            # Toponaming: tag the tool shapes (see SheetMetalTools.smTagShape).
+            def tag(shape, index, role):
+                return SheetMetalTools.smTagShape(shape, (fp.ID, 0), index, role)
+
             # Get all faces in sketch.
             skWiresList = cutSketch.Shape.Wires
             myFacesList = []
@@ -280,35 +284,35 @@ class ExtrudedCutout:
             # Step 4: Find connected components and offset shapes.
             connected_components = self.find_connected_faces(myCommon)
             offset_shapes = []
-            for component in connected_components:
+            for k, component in enumerate(connected_components):
                 component_shell = Part.Shell(component)
                 if component_shell.isValid():
                     offset_shape = component_shell.makeOffsetShape(-thickness, 0, fill=True)
                     if offset_shape.isValid():
-                        offset_shapes.append(offset_shape)
+                        offset_shapes.append(tag(offset_shape, k, 1))
 
             if fp.ImproveCut:
                 connected_improv = self.find_connected_faces(myCommImprov)
                 offset_improv = []
-                for improv in connected_improv:  # Offset to one side.
+                for k, improv in enumerate(connected_improv):  # Offset to one side.
                     improv_shell = Part.Shell(improv)
                     offset_value = improv_shell.distToShape(smSide1)[0]
                     off_impr = improv_shell.makeOffsetShape(offset_value, 0, fill=True)
-                    offset_improv.append(off_impr)
-                for improv in connected_improv:  # Offset to other side.
+                    offset_improv.append(tag(off_impr, k, 2))
+                for k, improv in enumerate(connected_improv):  # Offset to other side.
                     improv_shell = Part.Shell(improv)
                     offset_value = thickness - improv_shell.distToShape(smSide1)[0]
                     off_impr = improv_shell.makeOffsetShape(-offset_value, 0, fill=True)
-                    offset_improv.append(off_impr)
+                    offset_improv.append(tag(off_impr, k, 3))
 
             # Step 5: Combine the offsets.
             if offset_shapes:
-                combined_offset = Part.Solid(offset_shapes[0])
+                combined_offset = tag(Part.Solid(offset_shapes[0]), 0, 4)
                 for shape in offset_shapes[1:]:
                     combined_offset = combined_offset.fuse(shape)
 
                 if fp.ImproveCut:
-                    comb_impr_off = Part.Solid(offset_improv[0])
+                    comb_impr_off = tag(Part.Solid(offset_improv[0]), 0, 5)
                     for impr_shape in offset_improv[1:]:
                         comb_impr_off = comb_impr_off.fuse(impr_shape)
                     combined_offset = combined_offset.fuse(comb_impr_off)
@@ -317,12 +321,12 @@ class ExtrudedCutout:
                     cutOffsets = combined_offset.common(shell)
                     conn_offsetFaces = self.find_connected_faces(cutOffsets)
                     shapeCutOffsets = []
-                    for offset in conn_offsetFaces:
+                    for k, offset in enumerate(conn_offsetFaces):
                         offsetFace = Part.Shell(offset)
                         offsetSolid = offsetFace.makeOffsetShape(-thickness, 0, fill=True)
-                        shapeCutOffsets.append(offsetSolid)
+                        shapeCutOffsets.append(tag(offsetSolid, k, 6))
 
-                    combined_offset = Part.Solid(shapeCutOffsets[0])
+                    combined_offset = tag(Part.Solid(shapeCutOffsets[0]), 0, 7)
                     for shape in shapeCutOffsets[1:]:
                         combined_offset = combined_offset.fuse(shape)
 

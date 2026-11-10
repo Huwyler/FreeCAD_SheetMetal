@@ -35,11 +35,17 @@ from SheetMetalCornerReliefCmd import bendAngle
 smEpsilon = SheetMetalTools.smEpsilon
 
 
-def smSketchOnSheetMetal(kfactor=0.5, sketch="", flipped=False, selFaceNames="", MainObject=None):
+def smSketchOnSheetMetal(kfactor=0.5, sketch="", flipped=False, selFaceNames="", MainObject=None,
+                         toponamingId=None):
+    # `toponamingId` is (feature ID, 0); None disables tagging of the tool
+    # shapes (see SheetMetalTools.smTagShape).
+    def tag(shape, index, role):
+        return SheetMetalTools.smTagShape(shape, toponamingId, index, role)
+
     resultSolid = MainObject.Shape.copy()
     selElement = resultSolid.getElement(SheetMetalTools.getElementFromTNP(selFaceNames[0]))
     LargeFace = SheetMetalTools.smGetFaceByEdge(selElement, resultSolid)
-    sketch_face = Part.makeFace(sketch.Shape.Wires, "Part::FaceMakerBullseye")
+    sketch_face = tag(Part.makeFace(sketch.Shape.Wires, "Part::FaceMakerBullseye"), 0, 1)
     # To get thk of sheet, top face normal.
     thk = SheetMetalTools.smGetThickness(resultSolid, LargeFace)
     # print(thk)
@@ -52,7 +58,7 @@ def smSketchOnSheetMetal(kfactor=0.5, sketch="", flipped=False, selFaceNames="",
         sketch_face.reverse()
     Flatface = sketch_face.common(LargeFace)
     BalanceFaces = sketch_face.cut(Flatface)
-    Flatsolid = Flatface.extrude(normal * -thk)
+    Flatsolid = tag(Flatface.extrude(normal * -thk), 0, 2)
     # Part.show(Flatsolid,"Flatsolid")
     solidlist.append(Flatsolid)
     balanceFaceList = []
@@ -135,7 +141,7 @@ def smSketchOnSheetMetal(kfactor=0.5, sketch="", flipped=False, selFaceNames="",
         bendsolid = SheetMetalBendSolid.bend_solid(BendSolidFace.Faces[0], BendEdge, bendR,
                                                     thk, neutralRadius, revAxisV, flipped)
         # Part.show(bendsolid,"bendsolid")
-        solidlist.append(bendsolid)
+        solidlist.append(tag(bendsolid, faceno, 3))
 
         if flipped:
             bendA = -bendA
@@ -154,7 +160,7 @@ def smSketchOnSheetMetal(kfactor=0.5, sketch="", flipped=False, selFaceNames="",
         Flatface = sketch_face.common(TopFace)
         BalanceFace = sketch_face.cut(Flatface)
         # Part.show(BalanceFace,"BalanceFace")
-        Flatsolid = Flatface.extrude(normal * -thk)
+        Flatsolid = tag(Flatface.extrude(normal * -thk), faceno, 4)
         # Part.show(Flatsolid,"Flatsolid")
         solidlist.append(Flatsolid)
         # if balance face faces left, append to list
@@ -165,7 +171,7 @@ def smSketchOnSheetMetal(kfactor=0.5, sketch="", flipped=False, selFaceNames="",
     if len(solidlist) > 1:
         SMSolid = solidlist[0].multiFuse(solidlist[1:])
         # Part.show(SMSolid,"SMSolid")
-        SMSolid = SMSolid.removeSplitter()
+        SMSolid = tag(SMSolid.removeSplitter(), 0, 5)
     else:
         SMSolid = solidlist[0]
     # Part.show(SMSolid,"SMSolid")
@@ -202,7 +208,8 @@ class SMSketchOnSheet:
         fp.Shape = smSketchOnSheetMetal(kfactor=fp.kfactor,
                                         sketch=fp.Sketch,
                                         selFaceNames=fp.baseObject[1],
-                                        MainObject=fp.baseObject[0])
+                                        MainObject=fp.baseObject[0],
+                                        toponamingId=(fp.ID, 0))
 
 
 ###################################################################################################
